@@ -10,8 +10,9 @@ This will be my first real project, and the purpose of this prooject is in ranke
 	2. Master as AI - will judge guesses and decide on white/black/no prongs
 	3. Player as AI - will guess and try to reason from feedback
 
-a. Will use graphics, a horisontal board and include the picture of Gentleman and Hot Lady created by Grok
-b. Will use modular achitecture: a game loop which calls Player and Master modules.
-c. Will try to use object oriented code - if it will be practical
+- Will use graphics, a horisontal board and include the picture of Gentleman and Hot Lady created by Grok
+- Will use modular achitecture: a game loop which calls Player and Master modules
+- Will try to use object oriented code - if it will be practical
+- Will use AI for coding
 
 Time will tell how far I will come in this project.
