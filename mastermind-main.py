@@ -20,8 +20,11 @@ IMAGE_PATH = './resources/MasterMind.jpg'
 COLOR_BLACK = (0, 0, 0)
 COLOR_WHITE = (255, 255, 255)
 COLOR_GRAY = (128, 128, 128)
-COLOR_WHITE = (255, 255, 255)
 COLOR_LIGHT_GRAY = (200, 200, 200)
+COLOR_DARK_GRAY = (64, 64, 64)
+COLOR_EMPTY_GRAY = (132, 132, 132)
+COLOR_BROWN = (128, 64, 0)
+COLOR_BAR = COLOR_DARK_GRAY
 
 # Initialize Pygame
 pygame.init()
@@ -130,6 +133,7 @@ while running:
                 flags |= DOUBLEBUF | OPENGL
             if new_w != new_size[0] or new_h != new_size[1]:
                 screen = pygame.display.set_mode((new_w, new_h), flags)
+            w, h = screen.get_size()
         elif event.type == MOUSEBUTTONDOWN:
             mouse_x, mouse_y = event.pos
             scroll_bar_width = 20
@@ -272,47 +276,77 @@ while running:
         glPopMatrix()
         glDisable(GL_TEXTURE_2D)
 
+        # Draw board background as quad
+        glPushMatrix()
+        glTranslatef(0, 0, -0.1)
+        glColor3f(128/255.0, 64/255.0, 0)
+        glBegin(GL_QUADS)
+        glVertex3f(-5, -5, 0)
+        glVertex3f(10, -5, 0)
+        glVertex3f(10, 5, 0)
+        glVertex3f(-5, 5, 0)
+        glEnd()
+        glPopMatrix()
+
+        # Draw solution pegs as spheres
+        for peg_row in range(4):
+            glPushMatrix()
+            glTranslatef(-10, -peg_row * 1.2 + 2, 0)
+            glColor3f(64/255.0, 64/255.0, 64/255.0)
+            quad = gluNewQuadric()
+            gluSphere(quad, 0.8, 32, 32)
+            glPopMatrix()
+
+        # Draw vertical bar as quad
+        glPushMatrix()
+        glTranslatef(-9, 0, 0)
+        glColor3f(64/255.0, 64/255.0, 64/255.0)
+        pegs_height = 3.6
+        margin = 0.1 * pegs_height
+        glBegin(GL_QUADS)
+        glVertex3f(-0.2, -pegs_height / 2 - margin, 0)
+        glVertex3f(0.2, -pegs_height / 2 - margin, 0)
+        glVertex3f(0.2, pegs_height / 2 + margin, 0)
+        glVertex3f(-0.2, pegs_height / 2 + margin, 0)
+        glEnd()
+        glPopMatrix()
+
         # Draw board pegs as spheres
-        for row in range(12):
-            for col in range(4):
+        for col in range(12):
+            for peg_row in range(4):
                 glPushMatrix()
-                glTranslatef(col * 2 - 3, -row * 1.5 + 8, 0)  # Position on right
-                if row < len(guesses):
-                    color = colors.get(guesses[row][col], COLOR_WHITE)
+                glTranslatef(col * 1.2 - 8, -peg_row * 1.2 + 2, 0)
+                if col < len(guesses):
+                    color = colors.get(guesses[col][peg_row], COLOR_WHITE)
                     glColor3f(color[0]/255.0, color[1]/255.0, color[2]/255.0)
                 else:
-                    glColor3f(0.8, 0.8, 0.8)
+                    glColor3f(132/255.0, 132/255.0, 132/255.0)
                 quad = gluNewQuadric()
                 gluSphere(quad, 0.8, 32, 32)
                 glPopMatrix()
 
-        # Draw judgement pegs as smaller spheres
-        for row in range(12):
-            if row < len(judgements):
-                black, white = judgements[row]
+        # Draw judgement pegs as smaller spheres, always 4, below
+        for col in range(12):
+            if col < len(judgements):
+                black, white = judgements[col]
             else:
                 black, white = 0, 0
-            peg_count = 0
-            for _ in range(black):
-                j_row = peg_count // 2
-                j_col = peg_count % 2
+            base_x = col * 1.2 - 8 
+            base_y = -1.6 - 1.2  # Increased distance
+            for p in range(4):
+                j_row = p // 2
+                j_col = p % 2
                 glPushMatrix()
-                glTranslatef(5 + j_col * 1, -row * 1.5 + 8 + j_row * 1 - 0.5, 0)
-                glColor3f(0, 0, 0)
+                glTranslatef(base_x + j_col * 0.8, base_y - j_row * 0.8, 0)  # Removed -0.4 offset for alignment adjustment
+                if p < black:
+                    glColor3f(0, 0, 0)
+                elif p < black + white:
+                    glColor3f(1, 1, 1)
+                else:
+                    glColor3f(132/255.0, 132/255.0, 132/255.0)
                 quad = gluNewQuadric()
                 gluSphere(quad, 0.4, 32, 32)
                 glPopMatrix()
-                peg_count += 1
-            for _ in range(white):
-                j_row = peg_count // 2
-                j_col = peg_count % 2
-                glPushMatrix()
-                glTranslatef(5 + j_col * 1, -row * 1.5 + 8 + j_row * 1 - 0.5, 0)
-                glColor3f(1, 1, 1)
-                quad = gluNewQuadric()
-                gluSphere(quad, 0.4, 32, 32)
-                glPopMatrix()
-                peg_count += 1
 
     else:
         # 2D mode drawing
@@ -334,24 +368,26 @@ while running:
         draw_surface.fill(COLOR_BLACK)
 
         # Calculate layout on draw_surface (scaled)
-        margin_ratio = 0.1  # 10% empty area all around (margin on each side)
-        margin_x = margin_ratio * v_w
-        margin_y = margin_ratio * v_h
-        content_w = v_w - 2 * margin_x
-        content_h = v_h - 2 * margin_y
-        left_width = content_w / 4
-        board_width = content_w * 3 / 4
+        left_margin = 0.05 * v_w
+        gap = 0.05 * v_w
+        right_margin = 0.05 * v_w
+        top_margin = 0.1 * v_h
+        bottom_margin = 0.1 * v_h
+        content_h = v_h - top_margin - bottom_margin
+        available_w = v_w - left_margin - gap - right_margin
+        left_width = available_w / 4
+        board_width = available_w * 3 / 4
         left_height = content_h / 2
 
         # Draw picture (upper left)
-        picture_x = margin_x + draw_offset_x
-        picture_y = margin_y + draw_offset_y
+        picture_x = left_margin + draw_offset_x
+        picture_y = top_margin + draw_offset_y
         scaled_image = pygame.transform.smoothscale(image_surf, (int(left_width), int(left_height)))
         draw_surface.blit(scaled_image, (picture_x, picture_y))
 
         # Draw text area (lower left)
-        text_x = margin_x + draw_offset_x
-        text_y = margin_y + left_height + draw_offset_y
+        text_x = left_margin + draw_offset_x
+        text_y = top_margin + left_height + draw_offset_y
         pygame.draw.rect(draw_surface, COLOR_GRAY, (text_x, text_y, left_width, left_height))
         font_size = int(24 * scale)
         font = pygame.font.SysFont(None, font_size)
@@ -362,41 +398,83 @@ while running:
             draw_surface.blit(text_surf, (text_x + 10, text_y + 10 + i * line_height))
 
         # Draw board (right)
-        board_x = margin_x + left_width + draw_offset_x
-        board_y = margin_y + draw_offset_y
-        # Placeholder for board: grid of 12 rows
-        row_height = content_h / 12
-        peg_size = min(board_width / 5, row_height) * 0.8  # For 4 pegs + judgement
+        board_x = left_margin + left_width + gap + draw_offset_x
+        board_y = top_margin + draw_offset_y
+        # Draw board background and frame
+        pygame.draw.rect(draw_surface, COLOR_BROWN, (board_x, board_y, board_width, content_h))
+        pygame.draw.rect(draw_surface, COLOR_BLACK, (board_x, board_y, board_width, content_h), 2)
+
+        # Placeholder for board: grid of 12 columns horizontal + solution column + bar
+        left_padding = 0.05 * board_width
+        right_padding = left_padding
+        content_width = board_width - left_padding - right_padding
+        effective_columns = 14  # 1 sol + 1 sep + 12 guesses
+        column_width = content_width / effective_columns
+        solution_width = column_width
+        sep_width = column_width
+        bar_width = 0.2 * column_width
+        gap_left = (sep_width - bar_width) / 2
+        gap_right = gap_left
+        peg_size = min(column_width / 2.5, content_h / 5) * 0.8
         judgement_size = peg_size / 2
-        for row in range(12):
-            row_y = board_y + row * row_height
+        border_width = max(1, int(peg_size / 20))
+        pegs_span = 3 * peg_size * 1.2 + peg_size
+        j_span = 2.2 * judgement_size
+        space = 0.4 * peg_size
+        total_height = pegs_span + space + j_span
+        peg_start_y = board_y + (content_h - total_height) / 2
+        judgement_start_y = peg_start_y + pegs_span + space
+
+        # Draw solution column
+        solution_x = board_x + left_padding
+        for peg_row in range(4):
+            peg_y = peg_start_y + peg_row * peg_size * 1.2
+            peg_center = (int(solution_x + peg_size / 2), int(peg_y + peg_size / 2))
+            color = COLOR_DARK_GRAY
+            pygame.draw.circle(draw_surface, color, peg_center, int(peg_size / 2))
+            pygame.draw.circle(draw_surface, COLOR_BLACK, peg_center, int(peg_size / 2), border_width)
+
+        # Draw vertical bar
+        bar_x = solution_x + solution_width + gap_left
+        pegs_height = 4 * peg_size * 1.2
+        bar_margin = 0.1 * pegs_span
+        bar_y = peg_start_y - bar_margin
+        bar_height = pegs_span + 2 * bar_margin
+        pygame.draw.rect(draw_surface, COLOR_BAR, (bar_x, bar_y, bar_width, bar_height))
+
+        # Draw guessing columns
+        first_guess_x = bar_x + bar_width + gap_right
+        for col in range(12):
+            guess_x = first_guess_x + col * column_width
             # Draw guess pegs
-            for col in range(4):
-                peg_x = board_x + col * peg_size * 1.2
-                if row < len(guesses):
-                    color = colors.get(guesses[row][col], COLOR_WHITE)
+            for peg_row in range(4):
+                peg_y = peg_start_y + peg_row * peg_size * 1.2
+                peg_center = (int(guess_x + peg_size / 2), int(peg_y + peg_size / 2))
+                if col < len(guesses):
+                    color = colors.get(guesses[col][peg_row], COLOR_WHITE)
                 else:
-                    color = COLOR_LIGHT_GRAY  # Empty
-                pygame.draw.circle(draw_surface, color, (int(peg_x + peg_size / 2), int(row_y + row_height / 2)), int(peg_size / 2))
-            # Draw judgement pegs (2x2 grid)
-            judgement_x = board_x + 4 * peg_size * 1.2
-            if row < len(judgements):
-                black, white = judgements[row]
-                peg_count = 0
-                for _ in range(black):
-                    j_row = peg_count // 2
-                    j_col = peg_count % 2
-                    j_x = judgement_x + j_col * judgement_size * 1.2
-                    j_y = row_y + row_height / 2 - judgement_size + j_row * judgement_size * 1.2
-                    pygame.draw.circle(draw_surface, COLOR_BLACK, (int(j_x + judgement_size / 2), int(j_y + judgement_size / 2)), int(judgement_size / 2))
-                    peg_count += 1
-                for _ in range(white):
-                    j_row = peg_count // 2
-                    j_col = peg_count % 2
-                    j_x = judgement_x + j_col * judgement_size * 1.2
-                    j_y = row_y + row_height / 2 - judgement_size + j_row * judgement_size * 1.2
-                    pygame.draw.circle(draw_surface, COLOR_WHITE, (int(j_x + judgement_size / 2), int(j_y + judgement_size / 2)), int(judgement_size / 2))
-                    peg_count += 1
+                    color = COLOR_EMPTY_GRAY
+                pygame.draw.circle(draw_surface, color, peg_center, int(peg_size / 2))
+                pygame.draw.circle(draw_surface, COLOR_BLACK, peg_center, int(peg_size / 2), border_width)
+            # Draw judgement pegs (2x2 grid, always 4, below)
+            judgement_x = guess_x
+            if col < len(judgements):
+                black, white = judgements[col]
+            else:
+                black, white = 0, 0
+            for p in range(4):
+                j_row = p // 2
+                j_col = p % 2
+                j_y = judgement_start_y + j_row * judgement_size * 1.2
+                j_center = (int(judgement_x + j_col * judgement_size * 1.2 + judgement_size / 2), int(j_y + judgement_size / 2))
+                if p < black:
+                    color = COLOR_BLACK
+                elif p < black + white:
+                    color = COLOR_WHITE
+                else:
+                    color = COLOR_EMPTY_GRAY
+                pygame.draw.circle(draw_surface, color, j_center, int(judgement_size / 2))
+                pygame.draw.circle(draw_surface, COLOR_BLACK, j_center, int(judgement_size / 2), border_width)
 
         if need_scroll:
             screen.blit(virtual, (0, 0), clip_rect)
